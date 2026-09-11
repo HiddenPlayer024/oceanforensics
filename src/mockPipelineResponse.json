@@ -1,0 +1,55 @@
+{
+  "run_id": "run_20240315_143000",
+  "status": "success",
+  "generated_at": "2024-03-15T14:35:00Z",
+  "detection": {
+    "detection_id": "det_20240315_001",
+    "timestamp": "2024-03-15T14:30:00Z",
+    "confidence": 0.87,
+    "polygon": {
+      "type": "Polygon",
+      "coordinates": [[[72.61, 18.42], [72.63, 18.42], [72.63, 18.44], [72.61, 18.44], [72.61, 18.42]]]
+    },
+    "geometry": {
+      "area_km2": 12.4,
+      "perimeter_km": 15.2,
+      "centroid": { "lon": 72.62, "lat": 18.43 },
+      "aspect_ratio": 2.3,
+      "compactness": 0.6
+    }
+  },
+  "hindcast": {
+    "origin_probability_area": {
+      "type": "Polygon",
+      "coordinates": [[[72.40, 18.20], [72.55, 18.20], [72.55, 18.35], [72.40, 18.35], [72.40, 18.20]]]
+    },
+    "estimated_origin_time_window": {
+      "start": "2024-03-15T09:00:00Z",
+      "end": "2024-03-15T11:00:00Z"
+    },
+    "forward_forecast_path": {
+      "type": "Polygon",
+      "coordinates": [[[72.65, 18.44], [72.90, 18.50], [72.95, 18.60], [72.70, 18.55], [72.65, 18.44]]]
+    }
+  },
+  "ranked_suspects": [
+    {
+      "mmsi": "419001234",
+      "vessel_name": "MV Example",
+      "vessel_type": "Tanker",
+      "last_known_position": { "lon": 72.45, "lat": 18.25 },
+      "last_known_timestamp": "2024-03-15T08:15:00Z",
+      "last_known_speed_knots": 14.2,
+      "last_known_heading_deg": 90,
+      "went_dark_hours_ago": 2.5,
+      "reachable_zone": {
+        "type": "Polygon",
+        "coordinates": [[[72.44, 18.24], [72.56, 18.24], [72.56, 18.36], [72.44, 18.36], [72.44, 18.24]]]
+      },
+      "kinematic_score": 0.81,
+      "proximity_score": 0.65,
+      "size_match_score": 0.5,
+      "final_score": 0.71
+    }
+  ]
+}

@@ -55,7 +55,10 @@ const Chatbot = ({ activeContext, chatHistory, setChatHistory }) => {
   return (
     <div className={`chatbot-container ${isOpen ? 'open' : 'closed'}`}>
       <div className="chatbot-header" onClick={() => setIsOpen(!isOpen)}>
-        <span>🤖 AI Assistant</span>
+        <div className="chatbot-header-left">
+          <div className="chatbot-avatar">🤖</div>
+          <span className="chatbot-header-title">AI Assistant</span>
+        </div>
         <button>{isOpen ? '▼' : '▲'}</button>
       </div>
       {isOpen && (

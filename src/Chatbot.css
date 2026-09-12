@@ -2,101 +2,149 @@
   position: fixed;
   bottom: 24px;
   right: 24px;
-  width: 350px;
-  background-color: var(--bg-panel);
+  width: 360px;
+  background: rgba(7, 21, 42, 0.95);
+  backdrop-filter: blur(20px);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+  border-radius: 16px;
+  box-shadow: 0 16px 50px rgba(0,0,0,0.7), 0 0 0 1px rgba(0, 180, 216, 0.08);
   display: flex;
   flex-direction: column;
   z-index: 2000;
-  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
 }
 
-.chatbot-container.open {
-  height: 450px;
-}
-.chatbot-container.closed {
-  height: 54px;
+.chatbot-container::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-cyan), var(--accent-purple), transparent);
+  z-index: 1;
 }
 
+.chatbot-container.open  { height: 460px; }
+.chatbot-container.closed { height: 52px; }
+
 .chatbot-header {
-  background-color: var(--accent-blue);
+  background: rgba(0,0,0,0.3);
   color: white;
-  padding: 16px 20px;
+  padding: 14px 18px;
   font-weight: 600;
   display: flex;
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
   user-select: none;
-  font-size: 1.05rem;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  letter-spacing: 0.5px;
+}
+
+.chatbot-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chatbot-avatar {
+  width: 26px;
+  height: 26px;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+}
+
+.chatbot-header-title {
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 700;
 }
 
 .chatbot-header button {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 1rem;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text-muted);
+  font-size: 0.75rem;
   cursor: pointer;
-  padding: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.chatbot-header button:hover {
+  color: white;
+  background: rgba(255,255,255,0.12);
 }
 
 .chatbot-messages {
   flex: 1;
-  padding: 20px;
+  padding: 16px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  background: rgba(0,0,0,0.2);
+  gap: 12px;
+  background: rgba(0,0,0,0.15);
+}
+
+.chatbot-messages::-webkit-scrollbar { width: 4px; }
+.chatbot-messages::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 10px;
 }
 
 .chat-message {
   display: flex;
-  max-width: 90%;
+  max-width: 95%;
+  animation: fadeInUp 0.25s ease;
 }
 
-.chat-message.bot {
-  align-self: flex-start;
-}
+.chat-message.bot { align-self: flex-start; }
 
 .chat-message.bot .message-content {
-  background-color: var(--bg-dark);
+  background: rgba(0,0,0,0.35);
   color: var(--text-main);
-  border-radius: 12px 12px 12px 0;
-  padding: 12px 16px;
-  font-size: 0.95rem;
-  line-height: 1.5;
+  border-radius: 4px 12px 12px 12px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  line-height: 1.55;
   border: 1px solid var(--border-color);
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
 }
 
 .chat-message.bot .message-content strong {
-  color: var(--accent-blue);
+  color: var(--accent-cyan);
 }
 
 .chatbot-input {
-  padding: 12px;
-  border-top: 1px solid var(--border-color);
+  padding: 10px 14px;
+  border-top: 1px solid rgba(255,255,255,0.05);
   display: flex;
-  justify-content: center;
-  background-color: var(--bg-panel);
+  justify-content: flex-end;
+  background: rgba(0,0,0,0.2);
+  flex-shrink: 0;
 }
 
 .clear-btn {
   background: transparent;
   color: var(--text-muted);
   border: 1px solid var(--border-color);
-  padding: 8px 16px;
+  padding: 6px 14px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   transition: all 0.2s;
 }
 
 .clear-btn:hover {
   background: rgba(255,255,255,0.05);
   color: white;
+  border-color: rgba(255,255,255,0.15);
 }

@@ -8,15 +8,15 @@ import './App.css';
 
 // Dynamic icon generator based on final_score
 const getMarkerIcon = (score) => {
-  let color = 'var(--accent-green)'; // high (green)
-  if (score < 0.6) color = 'var(--accent-red)'; // low (red)
-  else if (score < 0.8) color = 'var(--accent-orange)'; // medium (orange)
+  let color = '#30d158'; // green
+  if (score < 0.6) color = '#ff4d6d';      // red
+  else if (score < 0.8) color = '#ff9f0a'; // orange
 
   return L.divIcon({
     className: 'custom-marker-icon',
-    html: `<div class="custom-marker" style="background-color: ${color};"></div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12]
+    html: `<div class="custom-marker" style="background-color: ${color}; color: ${color};"></div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
   });
 };
 
@@ -25,25 +25,65 @@ const swapPolygonCoords = (polygonCoordinates) => {
   return polygonCoordinates[0].map(point => [point[1], point[0]]);
 };
 
-// Map UI selection to Backend Bounding Box Coordinates
-const REGIONS = {
-  mumbai: { min_lon: 72.5, min_lat: 18.0, max_lon: 73.5, max_lat: 19.0 },
-  chennai: { min_lon: 80.2, min_lat: 13.0, max_lon: 80.5, max_lat: 13.3 },
-  kochi: { min_lon: 76.1, min_lat: 9.8, max_lon: 76.3, max_lat: 10.1 }
+// Named destinations with bounding boxes
+const NAMED_REGIONS = {
+  mumbai:  { label: 'Mumbai Coast (Demo)',   min_lon: 72.5, min_lat: 18.0, max_lon: 73.5, max_lat: 19.0 },
+  chennai: { label: 'Chennai Coast',          min_lon: 80.2, min_lat: 13.0, max_lon: 80.5, max_lat: 13.3 },
+  kochi:   { label: 'Kochi Coast',            min_lon: 76.1, min_lat: 9.8,  max_lon: 76.3, max_lat: 10.1 },
+  vizag:   { label: 'Visakhapatnam Harbor',   min_lon: 83.1, min_lat: 17.5, max_lon: 83.5, max_lat: 17.9 },
+  gulf:    { label: 'Gulf of Kutch',          min_lon: 68.5, min_lat: 22.0, max_lon: 70.5, max_lat: 23.5 },
+};
+
+// Normalise backend response – gracefully handle key variants
+const normaliseResponse = (raw) => {
+  if (!raw || raw.status === 'error') return raw;
+  return {
+    ...raw,
+    // Support both 'ranked_suspects' and 'suspects'
+    ranked_suspects: raw.ranked_suspects ?? raw.suspects ?? [],
+    // Support both 'hindcast' and 'hindcasting'
+    hindcast: raw.hindcast ?? raw.hindcasting ?? null,
+  };
+};
+
+const getScoreClass = (score) => {
+  if (score >= 0.8) return 'high';
+  if (score >= 0.6) return 'medium';
+  return 'low';
+};
+
+const getScoreBarColor = (score) => {
+  if (score >= 0.8) return 'var(--accent-green)';
+  if (score >= 0.6) return 'var(--accent-orange)';
+  return 'var(--accent-red)';
+};
+
+const getItemAccent = (score) => {
+  if (score >= 0.8) return 'var(--accent-green)';
+  if (score >= 0.6) return 'var(--accent-orange)';
+  return 'var(--accent-red)';
 };
 
 function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  
-  // UI States
+
+  // Map display
   const [showReachableZones, setShowReachableZones] = useState(false);
   const [date, setDate] = useState('2024-03-15');
-  const [regionKey, setRegionKey] = useState('mumbai');
-  const [useLiveBackend, setUseLiveBackend] = useState(false); // Demo-Day Safety
 
-  // Chatbot State
+  // Region selection mode: 'named' | 'coords'
+  const [regionMode, setRegionMode] = useState('named');
+  const [namedRegionKey, setNamedRegionKey] = useState('mumbai');
+  const [customCoords, setCustomCoords] = useState({
+    min_lon: 72.5, min_lat: 18.0, max_lon: 73.5, max_lat: 19.0
+  });
+
+  // Demo-Day Safety toggle
+  const [useLiveBackend, setUseLiveBackend] = useState(false);
+
+  // Chatbot
   const [activeContext, setActiveContext] = useState(null);
   const [chatHistory, setChatHistory] = useState([
     { sender: 'bot', text: 'Hello! I am your AI assistant. Click or hover on map items or the suspect list to learn more about the analysis.', id: Date.now() }
@@ -53,34 +93,40 @@ function App() {
     setActiveContext({ type, data: itemData, timestamp: Date.now() });
   };
 
+  const getRegionPayload = () => {
+    if (regionMode === 'named') {
+      const { label: _l, ...bounds } = NAMED_REGIONS[namedRegionKey];
+      return bounds;
+    }
+    return {
+      min_lon: parseFloat(customCoords.min_lon),
+      min_lat: parseFloat(customCoords.min_lat),
+      max_lon: parseFloat(customCoords.max_lon),
+      max_lat: parseFloat(customCoords.max_lat),
+    };
+  };
+
   const runAnalysis = async () => {
     setLoading(true);
     setError(null);
     setData(null);
 
-    // DEMO-DAY SAFETY FALLBACK
-    // If backend is down or taking too long, this instantly renders local static demo data.
     if (!useLiveBackend) {
       setTimeout(() => {
-        if (mockData.status === 'error') {
-          setError(mockData.message);
+        const normalised = normaliseResponse(mockData);
+        if (normalised?.status === 'error') {
+          setError(normalised.message);
         } else {
-          setData(mockData);
+          setData(normalised);
         }
         setLoading(false);
-      }, 800);
+      }, 900);
       return;
     }
 
-    // LIVE RENDER BACKEND CALL
     try {
-      // NOTE: Update this URL with your exact Render backend URL, or use an environment variable
       const API_URL = import.meta.env.VITE_API_URL || 'https://pro-back-h78m.onrender.com/api/run-pipeline';
-      
-      const payload = {
-        region: REGIONS[regionKey],
-        date: date
-      };
+      const payload = { region: getRegionPayload(), date };
 
       const response = await fetch(API_URL, {
         method: 'POST',
@@ -88,226 +134,434 @@ function App() {
         body: JSON.stringify(payload)
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 
-      const result = await response.json();
-      
-      if (result.status === 'error') {
+      const raw = await response.json();
+      const result = normaliseResponse(raw);
+
+      if (result?.status === 'error') {
         setError(result.message || 'The backend pipeline reported an error.');
       } else {
         setData(result);
       }
     } catch (err) {
-      setError(`Failed to connect to backend: ${err.message}. Try unchecking "Use Live Backend" to load fallback data.`);
+      setError(`Failed to connect to backend: ${err.message}. Uncheck "Use Live API" to load demo data.`);
     } finally {
       setLoading(false);
     }
   };
 
-  const center = data ? 
-    [data.detection.geometry.centroid.lat, data.detection.geometry.centroid.lon] : 
-    [18.43, 72.62]; // Default center
+  const mapCenter = data
+    ? [data.detection.geometry.centroid.lat, data.detection.geometry.centroid.lon]
+    : [18.43, 72.62];
 
-  const getScoreClass = (score) => {
-    if (score >= 0.8) return 'high';
-    if (score >= 0.6) return 'medium';
-    return 'low';
-  };
+  const suspects = data?.ranked_suspects ?? [];
 
   return (
     <div className="app-container">
+      {/* ── SIDEBAR ── */}
       <div className="sidebar">
-        <h2>🌊 Ocean Forensics</h2>
-        
-        <div className="control-panel">
-          <h3>Analysis Parameters</h3>
-          
-          <div className="control-group">
-            <label>Region of Interest</label>
-            <select value={regionKey} onChange={e => setRegionKey(e.target.value)}>
-              <option value="mumbai">Mumbai Coast (Demo)</option>
-              <option value="chennai">Chennai Coast</option>
-              <option value="kochi">Kochi Coast</option>
-            </select>
+        {/* Brand Header */}
+        <div className="brand-header">
+          <div className="brand-logo">
+            <div className="brand-icon">🌊</div>
+            <div>
+              <div className="brand-title">OceanForensics</div>
+            </div>
+            <span className="status-pill">
+              <span className="status-dot"></span>LIVE
+            </span>
           </div>
-
-          <div className="control-group">
-            <label>Analysis Date</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} />
-          </div>
-
-          <div className="control-group" style={{flexDirection: 'row', alignItems: 'center', gap: '8px', marginTop: '10px', padding: '8px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '6px', border: '1px solid var(--accent-blue)'}}>
-            <input 
-              type="checkbox" 
-              checked={useLiveBackend}
-              onChange={(e) => setUseLiveBackend(e.target.checked)}
-              id="live-backend"
-              style={{cursor: 'pointer'}}
-            />
-            <label htmlFor="live-backend" style={{margin: 0, cursor: 'pointer', color: 'var(--accent-blue)', fontWeight: 'bold'}}>
-              Use Live API (Render)
-            </label>
-          </div>
-
-          <button onClick={runAnalysis} disabled={loading} className="run-btn">
-            {loading ? 'Processing Pipeline...' : 'Run Analysis'}
-          </button>
-          
-          <div className="control-group" style={{marginTop: '16px', flexDirection: 'row', alignItems: 'center', gap: '8px', marginBottom: 0}}>
-            <input 
-              type="checkbox" 
-              checked={showReachableZones}
-              onChange={(e) => setShowReachableZones(e.target.checked)}
-              id="reachable-zones"
-              style={{cursor: 'pointer'}}
-            />
-            <label htmlFor="reachable-zones" style={{margin: 0, cursor: 'pointer', fontSize: '0.9rem'}}>Show Reachable Zones</label>
-          </div>
+          <div className="brand-subtitle">AI-Powered Oil Spill Attribution</div>
         </div>
 
-        {error && (
-          <div className="error-box" style={{backgroundColor: 'rgba(239, 68, 68, 0.15)', padding: '16px', borderRadius: '8px', border: '1px solid var(--accent-red)', color: '#fca5a5', marginBottom: '24px'}}>
-            <h4 style={{margin: '0 0 8px 0', color: 'var(--accent-red)'}}>Pipeline Error</h4>
-            <p style={{margin: 0, fontSize: '0.9rem'}}>{error}</p>
-          </div>
-        )}
+        <div className="sidebar-content">
 
-        {data && (
-          <div className="results-panel">
-            <h3 style={{color: 'var(--text-main)', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', marginTop: 0}}>Detection Info</h3>
-            <div 
-              style={{display: 'flex', justifyContent: 'space-between', marginBottom: '24px', backgroundColor: 'rgba(0,0,0,0.15)', padding: '16px', borderRadius: '8px', cursor: 'pointer'}}
-              onMouseEnter={() => handleInteract('detection', data.detection)}
-              onClick={() => handleInteract('detection', data.detection)}
-            >
-              <div>
-                <div style={{fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px'}}>Confidence</div>
-                <div style={{fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--accent-green)'}}>{(data.detection.confidence * 100).toFixed(1)}%</div>
+          {/* ── ANALYSIS PARAMETERS PANEL ── */}
+          <div className="panel-section">
+            <div className="panel-header">
+              <span className="panel-header-icon">⚙️</span>
+              <h3>Analysis Parameters</h3>
+            </div>
+            <div className="panel-body">
+
+              {/* Region Mode Toggle */}
+              <div className="region-mode-toggle">
+                <button
+                  className={`mode-btn ${regionMode === 'named' ? 'active' : ''}`}
+                  onClick={() => setRegionMode('named')}
+                >
+                  📍 Named Destination
+                </button>
+                <button
+                  className={`mode-btn ${regionMode === 'coords' ? 'active' : ''}`}
+                  onClick={() => setRegionMode('coords')}
+                >
+                  🔢 Coordinates
+                </button>
               </div>
-              <div style={{textAlign: 'right'}}>
-                <div style={{fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px'}}>Est. Area</div>
-                <div style={{fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--text-main)'}}>{data.detection.geometry.area_km2} <span style={{fontSize: '1rem'}}>km²</span></div>
+
+              {/* Named Destination Dropdown */}
+              {regionMode === 'named' && (
+                <div className="control-group">
+                  <label>Region of Interest</label>
+                  <select value={namedRegionKey} onChange={e => setNamedRegionKey(e.target.value)}>
+                    {Object.entries(NAMED_REGIONS).map(([key, region]) => (
+                      <option key={key} value={key}>{region.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Coordinate Inputs */}
+              {regionMode === 'coords' && (
+                <div className="coords-grid">
+                  {[
+                    { key: 'min_lon', label: 'Min Lon' },
+                    { key: 'min_lat', label: 'Min Lat' },
+                    { key: 'max_lon', label: 'Max Lon' },
+                    { key: 'max_lat', label: 'Max Lat' },
+                  ].map(({ key, label }) => (
+                    <div className="coord-input-group" key={key}>
+                      <label>{label}</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={customCoords[key]}
+                        onChange={e => setCustomCoords(prev => ({ ...prev, [key]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Date Picker */}
+              <div className="control-group" style={{ marginTop: regionMode === 'coords' ? '12px' : '0' }}>
+                <label>Analysis Date</label>
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+              </div>
+
+              {/* Live Backend Toggle */}
+              <div className="backend-toggle" onClick={() => setUseLiveBackend(v => !v)}>
+                <input
+                  type="checkbox"
+                  checked={useLiveBackend}
+                  onChange={e => setUseLiveBackend(e.target.checked)}
+                  id="live-backend"
+                  onClick={e => e.stopPropagation()}
+                />
+                <label htmlFor="live-backend" className="backend-toggle-label">
+                  🔗 Use Live API (Render)
+                </label>
+              </div>
+
+              {/* Run Button */}
+              <button
+                onClick={runAnalysis}
+                disabled={loading}
+                className={`run-btn ${loading ? 'loading' : ''}`}
+              >
+                {loading ? '⏳ Processing Pipeline…' : '▶  Run Analysis'}
+              </button>
+
+              {/* Reachable Zones Toggle */}
+              <div className="map-toggle" style={{ marginTop: '10px' }}>
+                <input
+                  type="checkbox"
+                  id="reachable-zones"
+                  checked={showReachableZones}
+                  onChange={e => setShowReachableZones(e.target.checked)}
+                />
+                <label htmlFor="reachable-zones">Show Reachable Zones</label>
               </div>
             </div>
-            
-            <h3 style={{color: 'var(--text-main)', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px'}}>Ranked Suspects</h3>
-            <ul className="suspect-list">
-              {data.ranked_suspects.map((suspect, idx) => (
-                <li 
-                  key={suspect.mmsi} 
-                  className="suspect-item"
-                  style={{cursor: 'pointer'}}
-                  onMouseEnter={() => handleInteract('suspect', suspect)}
-                  onClick={() => handleInteract('suspect', suspect)}
-                >
-                  <div className="suspect-header">
-                    <strong style={{fontSize: '1.1rem'}}>#{idx + 1} {suspect.vessel_name}</strong>
-                    <span className={`score ${getScoreClass(suspect.final_score)}`}>{(suspect.final_score * 100).toFixed(0)}% Match</span>
-                  </div>
-                  <div className="suspect-details">
-                    <div><strong>Type</strong> {suspect.vessel_type}</div>
-                    <div><strong>MMSI</strong> {suspect.mmsi}</div>
-                    <div><strong>Speed</strong> {suspect.last_known_speed_knots} kts</div>
-                    <div><strong>Dark Time</strong> {suspect.went_dark_hours_ago} hrs</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
           </div>
-        )}
+
+          {/* ── ERROR ── */}
+          {error && (
+            <div className="error-box">
+              <h4>⚠ Pipeline Error</h4>
+              <p>{error}</p>
+            </div>
+          )}
+
+          {/* ── RESULTS ── */}
+          {!data && !error && !loading && (
+            <div className="empty-state">
+              <div className="empty-state-icon">🛰️</div>
+              <p className="empty-state-text">
+                Configure your analysis parameters above and click <strong>Run Analysis</strong> to begin the pipeline.
+              </p>
+            </div>
+          )}
+
+          {data && (
+            <>
+              {/* Detection Info */}
+              <div className="panel-section">
+                <div className="panel-header">
+                  <span className="panel-header-icon">🔍</span>
+                  <h3>Detection Info</h3>
+                </div>
+                <div className="panel-body">
+                  <div className="detection-stats">
+                    <div
+                      className="stat-card"
+                      onMouseEnter={() => handleInteract('detection', data.detection)}
+                      onClick={() => handleInteract('detection', data.detection)}
+                    >
+                      <div className="stat-label">Confidence</div>
+                      <div className="stat-value green">
+                        {(data.detection.confidence * 100).toFixed(1)}
+                        <span className="stat-unit">%</span>
+                      </div>
+                    </div>
+                    <div
+                      className="stat-card"
+                      onMouseEnter={() => handleInteract('detection', data.detection)}
+                      onClick={() => handleInteract('detection', data.detection)}
+                    >
+                      <div className="stat-label">Est. Area</div>
+                      <div className="stat-value blue">
+                        {data.detection.geometry.area_km2}
+                        <span className="stat-unit">km²</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ranked Suspects */}
+              <div className="panel-section">
+                <div className="panel-header">
+                  <span className="panel-header-icon">🚢</span>
+                  <h3>Ranked Suspects</h3>
+                  <span className="suspects-count-badge" style={{ marginLeft: 'auto' }}>
+                    {suspects.length} vessel{suspects.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div className="panel-body" style={{ padding: suspects.length === 0 ? '20px 16px' : '14px 16px' }}>
+                  {suspects.length === 0 ? (
+                    <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      No suspects returned by pipeline.
+                    </div>
+                  ) : (
+                    <ul className="suspect-list">
+                      {suspects.map((suspect, idx) => (
+                        <li
+                          key={suspect.mmsi ?? idx}
+                          className="suspect-item"
+                          style={{ '--item-accent': getItemAccent(suspect.final_score), animationDelay: `${idx * 60}ms` }}
+                          onMouseEnter={() => handleInteract('suspect', suspect)}
+                          onClick={() => handleInteract('suspect', suspect)}
+                        >
+                          <span className="suspect-rank">#{idx + 1}</span>
+                          <div className="suspect-header">
+                            <div>
+                              <div className="suspect-name">{suspect.vessel_name}</div>
+                              <div className="suspect-mmsi">MMSI: {suspect.mmsi}</div>
+                            </div>
+                            <span className={`score-badge ${getScoreClass(suspect.final_score)}`}>
+                              {(suspect.final_score * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                          <div className="suspect-details">
+                            <div className="suspect-detail-item">
+                              <span className="suspect-detail-label">Type</span>
+                              <span className="suspect-detail-value">{suspect.vessel_type}</span>
+                            </div>
+                            <div className="suspect-detail-item">
+                              <span className="suspect-detail-label">Speed</span>
+                              <span className="suspect-detail-value">{suspect.last_known_speed_knots} kts</span>
+                            </div>
+                            <div className="suspect-detail-item">
+                              <span className="suspect-detail-label">Dark Time</span>
+                              <span className="suspect-detail-value">{suspect.went_dark_hours_ago} hrs</span>
+                            </div>
+                            <div className="suspect-detail-item">
+                              <span className="suspect-detail-label">Heading</span>
+                              <span className="suspect-detail-value">{suspect.last_known_heading_deg ?? '—'}°</span>
+                            </div>
+                          </div>
+                          {/* Score bar */}
+                          <div className="score-bar-wrap">
+                            <div
+                              className="score-bar-fill"
+                              style={{
+                                width: `${(suspect.final_score * 100).toFixed(0)}%`,
+                                background: getScoreBarColor(suspect.final_score)
+                              }}
+                            />
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-      
+
+      {/* ── MAP AREA ── */}
       <div className="map-area">
-        <MapContainer center={center} zoom={10} scrollWheelZoom={true} style={{ height: "100%", width: "100%", background: 'var(--bg-dark)' }}>
+        <MapContainer
+          center={mapCenter}
+          zoom={10}
+          scrollWheelZoom={true}
+          style={{ height: '100%', width: '100%', background: 'var(--bg-dark)' }}
+        >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             className="map-tiles"
           />
-          
+
           {data && (
-             <>
-               <Polygon 
-                 positions={swapPolygonCoords(data.detection.polygon.coordinates)} 
-                 pathOptions={{ color: 'var(--accent-red)', fillColor: 'var(--accent-red)', fillOpacity: 0.3, weight: 2 }}
-                 eventHandlers={{
-                   click: () => handleInteract('detection', data.detection),
-                   mouseover: () => handleInteract('detection', data.detection)
-                 }}
-               >
-                 <Popup>Spill Detection Area<br/>Confidence: {(data.detection.confidence * 100).toFixed(1)}%</Popup>
-               </Polygon>
+            <>
+              {/* Spill Detection Polygon */}
+              <Polygon
+                positions={swapPolygonCoords(data.detection.polygon.coordinates)}
+                pathOptions={{ color: '#ff4d6d', fillColor: '#ff4d6d', fillOpacity: 0.25, weight: 2 }}
+                eventHandlers={{
+                  click: () => handleInteract('detection', data.detection),
+                  mouseover: () => handleInteract('detection', data.detection)
+                }}
+              >
+                <Popup>
+                  <strong>Spill Detection Area</strong><br />
+                  Confidence: {(data.detection.confidence * 100).toFixed(1)}%
+                </Popup>
+              </Polygon>
 
-               <Polygon 
-                 positions={swapPolygonCoords(data.hindcast.origin_probability_area.coordinates)} 
-                 pathOptions={{ color: 'var(--accent-orange)', fillColor: 'var(--accent-orange)', fillOpacity: 0.25, weight: 2 }}
-                 eventHandlers={{
-                   click: () => handleInteract('origin', null),
-                   mouseover: () => handleInteract('origin', null)
-                 }}
-               >
-                 <Popup>Estimated Origin Probability Area</Popup>
-               </Polygon>
-               
-               <Polygon 
-                 positions={swapPolygonCoords(data.hindcast.forward_forecast_path.coordinates)} 
-                 pathOptions={{ color: 'var(--accent-purple)', fillColor: 'var(--accent-purple)', fillOpacity: 0.2, dashArray: '6, 6', weight: 2 }}
-                 eventHandlers={{
-                   click: () => handleInteract('forecast', null),
-                   mouseover: () => handleInteract('forecast', null)
-                 }}
-               >
-                 <Popup>Forward Forecast Path</Popup>
-               </Polygon>
+              {/* Origin Probability Area */}
+              {data.hindcast?.origin_probability_area && (
+                <Polygon
+                  positions={swapPolygonCoords(data.hindcast.origin_probability_area.coordinates)}
+                  pathOptions={{ color: '#ff9f0a', fillColor: '#ff9f0a', fillOpacity: 0.2, weight: 2 }}
+                  eventHandlers={{
+                    click: () => handleInteract('origin', null),
+                    mouseover: () => handleInteract('origin', null)
+                  }}
+                >
+                  <Popup>Estimated Origin Probability Area</Popup>
+                </Polygon>
+              )}
 
-               {data.ranked_suspects.map(suspect => (
-                 <React.Fragment key={suspect.mmsi}>
-                   <Marker 
-                     position={[suspect.last_known_position.lat, suspect.last_known_position.lon]}
-                     icon={getMarkerIcon(suspect.final_score)}
-                     eventHandlers={{
-                       click: () => handleInteract('suspect', suspect),
-                       mouseover: () => handleInteract('suspect', suspect)
-                     }}
-                   >
-                     <Popup>
-                       <div style={{padding: '5px'}}>
-                         <strong style={{fontSize: '1.1rem'}}>{suspect.vessel_name}</strong><br/>
-                         <div style={{margin: '5px 0', padding: '3px 8px', borderRadius: '4px', background: 'var(--bg-dark)', color: 'white', display: 'inline-block'}}>
-                           Score: {(suspect.final_score * 100).toFixed(1)}%
-                         </div><br/>
-                         <small>Last Seen: {new Date(suspect.last_known_timestamp).toLocaleString()}</small>
-                       </div>
-                     </Popup>
-                   </Marker>
-                   
-                   {showReachableZones && (
-                     <Polygon 
-                       positions={swapPolygonCoords(suspect.reachable_zone.coordinates)} 
-                       pathOptions={{ color: 'var(--accent-blue)', fillColor: 'var(--accent-blue)', fillOpacity: 0.1, weight: 1, dashArray: '4, 4' }} 
-                     >
-                       <Popup>{suspect.vessel_name} Reachable Zone</Popup>
-                     </Polygon>
-                   )}
-                 </React.Fragment>
-               ))}
-             </>
+              {/* Forward Forecast Path */}
+              {data.hindcast?.forward_forecast_path && (
+                <Polygon
+                  positions={swapPolygonCoords(data.hindcast.forward_forecast_path.coordinates)}
+                  pathOptions={{ color: '#bf5af2', fillColor: '#bf5af2', fillOpacity: 0.15, dashArray: '6, 6', weight: 2 }}
+                  eventHandlers={{
+                    click: () => handleInteract('forecast', null),
+                    mouseover: () => handleInteract('forecast', null)
+                  }}
+                >
+                  <Popup>Forward Forecast Path</Popup>
+                </Polygon>
+              )}
+
+              {/* Suspect Markers */}
+              {suspects.map((suspect, idx) => (
+                <React.Fragment key={suspect.mmsi ?? idx}>
+                  {suspect.last_known_position?.lat != null && suspect.last_known_position?.lon != null && (
+                    <Marker
+                      position={[suspect.last_known_position.lat, suspect.last_known_position.lon]}
+                      icon={getMarkerIcon(suspect.final_score)}
+                      eventHandlers={{
+                        click: () => handleInteract('suspect', suspect),
+                        mouseover: () => handleInteract('suspect', suspect)
+                      }}
+                    >
+                      <Popup>
+                        <div style={{ padding: '4px', minWidth: '160px' }}>
+                          <strong style={{ fontSize: '1rem' }}>{suspect.vessel_name}</strong><br />
+                          <span style={{ fontSize: '0.8rem', color: '#666' }}>MMSI: {suspect.mmsi}</span><br />
+                          <div style={{ marginTop: '6px', padding: '3px 8px', borderRadius: '4px', background: '#1e293b', color: 'white', display: 'inline-block', fontSize: '0.85rem' }}>
+                            Score: {(suspect.final_score * 100).toFixed(1)}%
+                          </div><br />
+                          <small style={{ color: '#888' }}>Last Seen: {new Date(suspect.last_known_timestamp).toLocaleString()}</small>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  )}
+
+                  {showReachableZones && suspect.reachable_zone?.coordinates && (
+                    <Polygon
+                      positions={swapPolygonCoords(suspect.reachable_zone.coordinates)}
+                      pathOptions={{ color: '#00b4d8', fillColor: '#00b4d8', fillOpacity: 0.08, weight: 1, dashArray: '4, 4' }}
+                    >
+                      <Popup>{suspect.vessel_name} — Reachable Zone</Popup>
+                    </Polygon>
+                  )}
+                </React.Fragment>
+              ))}
+            </>
           )}
         </MapContainer>
-        
+
+        {/* Loading Overlay */}
+        {loading && (
+          <div className="loading-overlay">
+            <div className="loading-ring"></div>
+            <div className="loading-text">Running Pipeline…</div>
+          </div>
+        )}
+
+        {/* Map Top Banner */}
+        {data && (
+          <div className="map-overlay-header">
+            <div className="map-overlay-dot" style={{ background: 'var(--accent-green)' }}></div>
+            <span className="map-overlay-text">
+              Analysis Complete · {suspects.length} Vessel{suspects.length !== 1 ? 's' : ''} Flagged
+            </span>
+          </div>
+        )}
+
+        {/* Legend */}
         {data && (
           <div className="map-legend">
-            <div className="legend-item"><span className="legend-color" style={{backgroundColor: 'var(--accent-red)'}}></span> Spill Detection</div>
-            <div className="legend-item"><span className="legend-color" style={{backgroundColor: 'var(--accent-orange)'}}></span> Origin Probability</div>
-            <div className="legend-item"><span className="legend-color" style={{backgroundColor: 'var(--accent-purple)'}}></span> Forward Forecast</div>
-            {showReachableZones && <div className="legend-item"><span className="legend-color" style={{backgroundColor: 'var(--accent-blue)', opacity: 0.3}}></span> Reachable Zones</div>}
+            <div className="legend-title">Layer Legend</div>
+            <div className="legend-item">
+              <span className="legend-color" style={{ background: '#ff4d6d', opacity: 0.8 }}></span>
+              Spill Detection
+            </div>
+            <div className="legend-item">
+              <span className="legend-color" style={{ background: '#ff9f0a', opacity: 0.8 }}></span>
+              Origin Probability
+            </div>
+            <div className="legend-item">
+              <span className="legend-color" style={{ background: '#bf5af2', opacity: 0.8 }}></span>
+              Forward Forecast
+            </div>
+            {showReachableZones && (
+              <div className="legend-item">
+                <span className="legend-color" style={{ background: '#00b4d8', opacity: 0.5 }}></span>
+                Reachable Zones
+              </div>
+            )}
+            <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="legend-item" style={{ marginBottom: '4px' }}>
+                <span className="legend-color" style={{ background: '#30d158', borderRadius: '50%' }}></span>
+                High Match (≥80%)
+              </div>
+              <div className="legend-item" style={{ marginBottom: '4px' }}>
+                <span className="legend-color" style={{ background: '#ff9f0a', borderRadius: '50%' }}></span>
+                Medium (60–80%)
+              </div>
+              <div className="legend-item">
+                <span className="legend-color" style={{ background: '#ff4d6d', borderRadius: '50%' }}></span>
+                Low (&lt;60%)
+              </div>
+            </div>
           </div>
         )}
       </div>
-      
-      <Chatbot 
+
+      {/* ── CHATBOT ── */}
+      <Chatbot
         activeContext={activeContext}
         chatHistory={chatHistory}
         setChatHistory={setChatHistory}

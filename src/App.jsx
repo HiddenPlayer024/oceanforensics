@@ -56,6 +56,13 @@ export default function App() {
   const [activeTarget, setActiveTarget] = useState(null);
   const [time, setTime] = useState(new Date().toUTCString());
 
+  // Input states
+  const [date, setDate] = useState("2024-03-15");
+  const [minLon, setMinLon] = useState(72.4);
+  const [minLat, setMinLat] = useState(18.2);
+  const [maxLon, setMaxLon] = useState(72.8);
+  const [maxLat, setMaxLat] = useState(18.6);
+
   const [layers, setLayers] = useState({
     spill: true,
     hindcast: true,
@@ -76,8 +83,8 @@ export default function App() {
     setData(null);
     try {
       const response = await axios.post('/api/run-pipeline', {
-        region: { min_lon: 72.4, min_lat: 18.2, max_lon: 72.8, max_lat: 18.6 },
-        date: "2024-03-15"
+        region: { min_lon: parseFloat(minLon), min_lat: parseFloat(minLat), max_lon: parseFloat(maxLon), max_lat: parseFloat(maxLat) },
+        date: date
       });
       if (response.data.status === "error") {
         setError(response.data);
@@ -124,21 +131,32 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2 text-xs text-slate-400">
+          <div className="flex items-center gap-2 text-xs text-slate-400 hidden lg:flex">
             <Clock className="w-3.5 h-3.5" />
             {time}
           </div>
+          
+          <div className="flex items-center gap-2 bg-[#090d16] p-1 border border-slate-800 rounded">
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-900 border border-slate-700 text-[10px] px-2 py-1 outline-none text-slate-300" />
+            <div className="flex gap-1">
+              <input type="number" step="0.1" value={minLon} onChange={e => setMinLon(e.target.value)} className="bg-slate-900 border border-slate-700 text-[10px] px-1 py-1 w-12 outline-none text-slate-300" placeholder="Min Lon" title="Min Longitude" />
+              <input type="number" step="0.1" value={maxLon} onChange={e => setMaxLon(e.target.value)} className="bg-slate-900 border border-slate-700 text-[10px] px-1 py-1 w-12 outline-none text-slate-300" placeholder="Max Lon" title="Max Longitude" />
+              <input type="number" step="0.1" value={minLat} onChange={e => setMinLat(e.target.value)} className="bg-slate-900 border border-slate-700 text-[10px] px-1 py-1 w-12 outline-none text-slate-300" placeholder="Min Lat" title="Min Latitude" />
+              <input type="number" step="0.1" value={maxLat} onChange={e => setMaxLat(e.target.value)} className="bg-slate-900 border border-slate-700 text-[10px] px-1 py-1 w-12 outline-none text-slate-300" placeholder="Max Lat" title="Max Latitude" />
+            </div>
+          </div>
+
           <div className="flex gap-2">
-            <button onClick={loadMock} className="px-3 py-1 text-[10px] uppercase tracking-wider border border-slate-700 hover:bg-slate-800 transition-colors">
-              Load Cached Demo
+            <button onClick={loadMock} className="px-3 py-1 text-[10px] uppercase tracking-wider border border-slate-700 hover:bg-slate-800 transition-colors shrink-0">
+              Load Cached
             </button>
             <button 
               onClick={executePipeline}
               disabled={loading}
-              className="flex items-center gap-2 px-4 py-1 text-[10px] uppercase tracking-wider bg-cyan-950/60 border border-cyan-500/50 text-cyan-400 hover:bg-cyan-900/80 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-1 text-[10px] uppercase tracking-wider bg-cyan-950/60 border border-cyan-500/50 text-cyan-400 hover:bg-cyan-900/80 transition-colors disabled:opacity-50 shrink-0"
             >
               <Target className="w-3.5 h-3.5" />
-              Execute Pipeline
+              Execute
             </button>
           </div>
         </div>

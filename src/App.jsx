@@ -76,6 +76,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activeTarget, setActiveTarget] = useState([18.43, 72.62]);
+  const [showReachableZones, setShowReachableZones] = useState(false);
 
   // Input states
   const [date, setDate] = useState("2024-03-15");
@@ -178,6 +179,15 @@ export default function App() {
             />
           )}
 
+          {/* Reachable Zones (Toggleable) */}
+          {showReachableZones && rankedSuspects.map(suspect => suspect.reachable_zone && (
+            <Polygon 
+              key={`rz-${suspect.mmsi}`}
+              positions={swapCoords(suspect.reachable_zone.coordinates)} 
+              pathOptions={{ color: '#8b5cf6', weight: 1, fillColor: '#8b5cf6', fillOpacity: 0.1, dashArray: "4,4" }} 
+            />
+          ))}
+
           {/* Suspect Markers */}
           {rankedSuspects.map((suspect) => (
             <Marker 
@@ -203,6 +213,12 @@ export default function App() {
               <input type="number" step="0.1" value={minLat} onChange={e => setMinLat(e.target.value)} className="bg-slate-800/80 border border-slate-600/50 text-xs px-3 py-2 rounded-lg outline-none text-white w-24 font-mono" placeholder="Min Lat" />
               <input type="number" step="0.1" value={maxLat} onChange={e => setMaxLat(e.target.value)} className="bg-slate-800/80 border border-slate-600/50 text-xs px-3 py-2 rounded-lg outline-none text-white w-24 font-mono" placeholder="Max Lat" />
             </div>
+            
+            <label className="flex items-center gap-2 cursor-pointer mt-1 group">
+              <input type="checkbox" checked={showReachableZones} onChange={e => setShowReachableZones(e.target.checked)} className="accent-blue-500 cursor-pointer" />
+              <span className="text-[10px] text-slate-300 uppercase tracking-widest font-semibold group-hover:text-white transition-colors">Show Reachable Zones</span>
+            </label>
+
             <div className="flex gap-2 mt-2">
               <button onClick={loadMock} className="flex-1 bg-slate-700/80 hover:bg-slate-600 text-white text-[10px] uppercase font-bold py-2 rounded-lg transition-colors">
                 Mock
@@ -233,6 +249,10 @@ export default function App() {
                <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
             </div>
             <span>Ship (AIS missing)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-6 border-t-2 border-purple-500 border-dashed"></div>
+            <span>Reachable Zone</span>
           </div>
         </div>
       </main>
@@ -326,6 +346,7 @@ export default function App() {
                     <div className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-slate-400"></span> Kinematic Match ({(suspect.kinematic_score*100).toFixed(0)}%)</div>
                     {suspect.went_dark_hours_ago > 0 && <div className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-slate-400"></span> No AIS signal ({suspect.went_dark_hours_ago}h gap)</div>}
                     <div className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-slate-400"></span> Size Match SAR ({(suspect.size_match_score*100).toFixed(0)}%)</div>
+                    <div className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-slate-400"></span> Last Speed: {suspect.last_known_speed_knots} KT</div>
                   </div>
                 </div>
               );

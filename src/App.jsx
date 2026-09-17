@@ -75,7 +75,7 @@ export default function App() {
     setError(null);
     setData(null);
     try {
-      const response = await axios.post('https://pro-back-h78m.onrender.com/api/run-pipeline', {
+      const response = await axios.post('/api/run-pipeline', {
         region: { min_lon: 72.4, min_lat: 18.2, max_lon: 72.8, max_lat: 18.6 },
         date: "2024-03-15"
       });
